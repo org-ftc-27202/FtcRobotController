@@ -196,8 +196,10 @@ public class visionCalibration extends LinearOpMode {
 
         @Override
         public Mat processFrame(Mat frame, long captureTimeNanos) {
-            final Scalar H_TO_255 = new Scalar(255.0/179.0);
-            Imgproc.cvtColor(frame, hsv, Imgproc.COLOR_RGB2HSV, 4);
+            Mat flippedFrame = new Mat();
+            Core.flip(frame, flippedFrame, -1); //flip camera feed right side-up
+
+            Imgproc.cvtColor(flippedFrame, hsv, Imgproc.COLOR_RGB2HSV, 4);
 
             //red
             Core.inRange(hsv, new Scalar(160, 15, 170), new Scalar(180, 255, 255), colorR0);

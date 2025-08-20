@@ -21,59 +21,44 @@
 
 package org.firstinspires.ftc.teamcode;
 
-
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.internal.camera.calibration.CameraCalibration;
+import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
-import org.openftc.easyopencv.OpenCvCamera;
-import org.openftc.easyopencv.OpenCvCameraFactory;
-import org.openftc.easyopencv.OpenCvCameraRotation;
-import org.openftc.easyopencv.OpenCvPipeline;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.VisionPortal.StreamFormat;
+import org.firstinspires.ftc.vision.VisionProcessor;
 
-// This version of the internal camera example uses EasyOpenCV's interface to the original
-// Android camera API
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.util.Size;
 
 @TeleOp(name = "Bodhi Machine Vision", group = "Robot")
 
 public class bodhiMachineVision extends LinearOpMode {
-    OpenCvCamera webCam;
-    SampleAlignmentPipeline pipeline;
-
     @Override
     public void runOpMode() {
-        int cameraMonitorViewId = hardwareMap.appContext.getResources().getIdentifier("cameraMonitorViewId", "id", hardwareMap.appContext.getPackageName());
-
         WebcamName webcamName = hardwareMap.get(WebcamName.class, "Webcam 1");
 
-        webCam = OpenCvCameraFactory.getInstance().createWebcam(webcamName, cameraMonitorViewId);
+        SampleAlignmentPipeline sampleAlignmentPipeline = new SampleAlignmentPipeline();
 
-        pipeline = new SampleAlignmentPipeline();
+        VisionPortal.Builder builder = new VisionPortal.Builder()
+                .setCamera(webcamName)
+                .setCameraResolution(new Size(1280, 720))
+                .setStreamFormat(StreamFormat.MJPEG)
+                .addProcessor(sampleAlignmentPipeline);
 
-        // Specify the image processing pipeline we wish to invoke upon receipt of a frame from the camera.
-        // Note that switching pipelines on-the-fly (while a streaming session is in flight) *IS* supported.
-        webCam.setPipeline(pipeline);
-
-        webCam.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener() {
-            @Override
-            public void onOpened() {
-                webCam.startStreaming(640, 480, OpenCvCameraRotation.UPRIGHT);
-            }
-
-            @Override
-            public void onError(int errorCode) {
-                // This will be called if the camera could not be opened
-            }
-        });
+        VisionPortal visionPortal = builder.build();
 
         telemetry.addLine("Waiting for start");
         telemetry.update();
@@ -83,13 +68,15 @@ public class bodhiMachineVision extends LinearOpMode {
 
         while (opModeIsActive()) {
             // Send some stats to the telemetry
-            telemetry.addData("Frame Count", webCam.getFrameCount());
-            telemetry.addData("FPS", String.format("%.2f", webCam.getFps()));
-            telemetry.addData("Total frame time ms", webCam.getTotalFrameTimeMs());
-            telemetry.addData("Pipeline time ms", webCam.getPipelineTimeMs());
-            telemetry.addData("Overhead time ms", webCam.getOverheadTimeMs());
-            telemetry.addData("Theoretical max FPS", webCam.getCurrentPipelineMaxFps());
-            telemetry.addData("Angle", pipeline.getAnalysis());
+            //ProcessorTelemetry telemetry = visionPortal.getProcessorTelemetry(myTfodProcessor);
+            //telemetry.addData("Frame Count", visionPortal.getFrameCount());
+            telemetry.addData("FPS", String.format("%.2f", visionPortal.getFps()));
+
+            //telemetry.addData("Total frame time ms", visionPortal.getTotalFrameTimeMs());
+            //telemetry.addData("Pipeline time ms", visionPortal.getPipelineTime());
+            //telemetry.addData("Overhead time ms", visionPortal.getOverheadTime());
+            //telemetry.addData("Theoretical max FPS", visionPortal.getCurrentPipelineMaxFps());
+            //telemetry.addData("Angle", myPipeline.getAnalysis());
             telemetry.update();
 
             if (gamepad1.a) {
@@ -110,7 +97,8 @@ public class bodhiMachineVision extends LinearOpMode {
                 // it the next time you wish to activate your vision pipeline, which can take a bit of
                 // time. Of course, this comment is irrelevant in light of the use case described in
                 // the above "important note".
-                webCam.stopStreaming();
+                visionPortal.close(); //closes communication with USB permanently
+                //visionPortal.stopStreaming(); //can be re-enabled
                 //phoneCam.closeCameraDevice();
             }
 
@@ -118,24 +106,91 @@ public class bodhiMachineVision extends LinearOpMode {
         }
     }
 
-    static class SampleAlignmentPipeline extends OpenCvPipeline {
-        // An enum to define the skystone position
+    public class SampleAlignmentPipeline implements VisionProcessor {
+        class ColorStrandBounds {
+            private Scalar lowerBounds;
+            private Scalar upperBounds;
 
-        Mat colorR0 = new Mat();
-        Mat colorR1 = new Mat();
-        Mat colorR = new Mat();
-        Mat colorG = new Mat();
-        Mat colorB = new Mat();
+            private ColorStrandBounds(Scalar initLowerBounds, Scalar initUpperBounds) {
+                if (initLowerBounds == null || initUpperBounds == null) {
+                    throw new IllegalArgumentException("lowerBounds and upperBounds cannot be null");
+                }
+
+                this.lowerBounds = new Scalar(initLowerBounds.val[0], initLowerBounds.val[1], initLowerBounds.val[2]);
+                this.upperBounds = new Scalar(initUpperBounds.val[0], initUpperBounds.val[1], initUpperBounds.val[2]);
+            }
+
+            public Scalar getLowerBounds() {
+                return new Scalar(lowerBounds.val[0], lowerBounds.val[1], lowerBounds.val[2]);
+            }
+
+            public Scalar getUpperBounds() {
+                return new Scalar(upperBounds.val[0], upperBounds.val[1], upperBounds.val[2]);
+            }
+
+            public void setLowerBounds(Scalar newLowerBounds) {
+                if (newLowerBounds == null) {
+                    throw new IllegalArgumentException("lowerBounds cannot be null");
+                }
+
+                lowerBounds = new Scalar(newLowerBounds.val[0], newLowerBounds.val[1], newLowerBounds.val[2]);
+            }
+
+            public void setUpperBounds(Scalar newUpperBounds) {
+                if (newUpperBounds == null) {
+                    throw new IllegalArgumentException("upperBounds cannot be null");
+                }
+
+                upperBounds = new Scalar(newUpperBounds.val[0], newUpperBounds.val[1], newUpperBounds.val[2]);
+            }
+
+            public void hsvMatInRange(Mat src, Mat output) {
+                double lowerBoundsH = lowerBounds.val[0];
+                double upperBoundsH = upperBounds.val[0];
+
+                if (lowerBoundsH > upperBoundsH) {
+                    // Handling HSV wrap-around for hues (ex. red)
+                    Mat withinBounds0 = new Mat();
+                    Mat withinBounds1 = new Mat();
+
+                    // lowerBoundsH to Max Hue
+                    Core.inRange(src,
+                            new Scalar(lowerBoundsH, lowerBounds.val[1], lowerBounds.val[2]),
+                            new Scalar(179, upperBounds.val[1], upperBounds.val[2]),
+                            withinBounds0);
+
+                    // Min Hue to upperBoundsH
+                    Core.inRange(src,
+                            new Scalar(0, lowerBounds.val[1], lowerBounds.val[2]),
+                            new Scalar(upperBoundsH, upperBounds.val[1], upperBounds.val[2]),
+                            withinBounds1);
+
+                    // Combine the 2 masks
+                    Core.add(withinBounds0, withinBounds1, output);
+
+                    //Releasing temporary Mat objects from memory
+                    withinBounds0.release();
+                    withinBounds1.release();
+                } else {
+                    // Standard HSV range
+                    Core.inRange(src, lowerBounds, upperBounds, output);
+                }
+            }
+        }
+
+        ColorStrandBounds redBounds = new ColorStrandBounds(new Scalar(160, 15, 179), new Scalar(19, 255, 255));
+        ColorStrandBounds yellowBounds = new ColorStrandBounds(new Scalar(20, 80, 170), new Scalar(40, 255, 255));
+        ColorStrandBounds blueBounds = new ColorStrandBounds(new Scalar(90, 25, 100), new Scalar (140, 255, 255));
         Mat dst = new Mat();
         Mat cdst = new Mat();
         Mat hsv = new Mat();
-        Mat result = new Mat();
+        Mat processedFrame = new Mat();
 
         // Volatile since accessed by OpMode thread w/o synchronization
         private volatile double angles;
 
         @Override
-        public void init(Mat firstFrame) {
+        public void init(int width, int height, CameraCalibration calibration) {
             // We need to call this in order to make sure the 'Cb' object is initialized, so that the
             // submats we make will still be linked to it on subsequent frames. (If the object were to
             // only be initialized in processFrame, then the submats would become delinked because the
@@ -168,14 +223,13 @@ public class bodhiMachineVision extends LinearOpMode {
             ArrayList<Double> angles = new ArrayList<Double>();
 
             for (int x = 0; x < Math.min(lines.rows(), 2); x++) {
-                double rho = lines.get(x, 0)[0],
-                        theta = lines.get(x, 0)[1];
+                double rho = lines.get(x, 0)[0], theta = lines.get(x, 0)[1];
                 double a = Math.cos(theta), b = Math.sin(theta);
                 double x0 = a * rho, y0 = b * rho;
                 Point pt1 = new Point(Math.round(x0 + 1000 * (-b)), Math.round(y0 + 1000 * (a)));
                 Point pt2 = new Point(Math.round(x0 - 1000 * (-b)), Math.round(y0 - 1000 * (a)));
 
-                Imgproc.line(result, pt1, pt2, color, 3, Imgproc.LINE_AA, 0);
+                Imgproc.line(processedFrame, pt1, pt2, color, 3, Imgproc.LINE_AA, 0);
 
                 double dy = pt1.y - pt2.y;
                 double dx = pt1.x - pt2.x;
@@ -210,32 +264,56 @@ public class bodhiMachineVision extends LinearOpMode {
         }
 
         @Override
-        public Mat processFrame(Mat input) {
-            Imgproc.cvtColor(input, hsv, Imgproc.COLOR_RGB2HSV, 4);
-            
-            //red
-            Core.inRange(hsv, new Scalar(160, 15, 170), new Scalar(180, 255, 255), colorR0);
-            Core.inRange(hsv, new Scalar(0, 15, 170), new Scalar(19, 255, 255), colorR1);
-            Core.add(colorR0, colorR1, colorR);
+        public Mat processFrame(Mat frame, long captureTimeNanos) {
+            Mat flippedFrame = new Mat();
 
-            //yellow
-            Core.inRange(hsv, new Scalar(20, 80, 170), new Scalar(40, 255, 255), colorG);
+            // Flip camera feed right side-up
+            Core.flip(frame, flippedFrame, -1);
 
-            //blue
-            Core.inRange(hsv, new Scalar(90, 25, 100), new Scalar(140, 255, 255), colorB);
+            // Convert to HSV
+            Imgproc.cvtColor(flippedFrame, hsv, Imgproc.COLOR_RGB2HSV, 4);
 
-            //result = input;
+            Mat redMask = new Mat();
+            Mat yellowMask = new Mat();
+            Mat blueMask = new Mat();
 
-            //double angleR = houghPolar(colorR, new Scalar(255, 0, 0));
-            //double angleG = houghPolar(colorG, new Scalar(255, 255, 0));
-            //double angleB = houghPolar(colorB, new Scalar(0, 0, 255));
+            // Apply masks to frame
+            redBounds.hsvMatInRange(hsv, redMask);
+            yellowBounds.hsvMatInRange(hsv, yellowMask);
+            blueBounds.hsvMatInRange(hsv, blueMask);
 
-            //angles = angleR;
+            // Combine masks
+            Core.merge(Arrays.asList(redMask, yellowMask, blueMask), processedFrame);
 
-            List<Mat> listMat = Arrays.asList(colorR, colorG, colorB);
-            Core.merge(listMat, result);
-            //result = colorR;
-            return result;
+            // Release temporary Mat objects from memory
+            redMask.release();
+            yellowMask.release();
+            blueMask.release();
+
+            return processedFrame;
+        }
+
+        public void onDrawFrame(Canvas canvas, int onscreenWidth, int onscreenHeight, float scaleBmpPxToCanvasPx, float scaleCanvasDensity, Object userContext) {
+            Mat processedMat = (Mat) userContext;
+
+            if (processedMat != null && !processedMat.empty()) {
+
+                // Step 1: Handle Grayscale Images
+                // onDrawFrame() requires a 3-channel (RGB) Mat to convert to a Bitmap.
+                // If your processed Mat is grayscale (CV_8UC1), convert it to 3-channel BGR.
+                //if (processedMat.channels() == 1) {
+                //    Imgproc.cvtColor(processedMat, processedMat, Imgproc.COLOR_GRAY2BGR);
+                //}
+
+                // Step 2: Convert the Mat to a Bitmap.
+                // Use the ARGB_8888 format for maximum compatibility.
+                Bitmap processedBitmap = Bitmap.createBitmap(processedMat.cols(), processedMat.rows(), Bitmap.Config.ARGB_8888);
+                Utils.matToBitmap(processedMat, processedBitmap);
+
+                // Step 3: Draw the Bitmap to the canvas.
+                // The canvas expects to be a 3-channel Mat (RGB)
+                canvas.drawBitmap(processedBitmap, 0, 0, null);
+            }
         }
 
         // Call this from the OpMode thread to obtain the latest analysis
