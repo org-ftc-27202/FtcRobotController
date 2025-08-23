@@ -1,0 +1,17 @@
+{
+  "calibration_values": {
+    "red": {
+      "lower_bounds": [160, 15, 179],
+      "upper_bounds": [19, 255, 255]
+    },
+    "yellow": {
+      "lower_bounds": [20, 80, 170],
+      "upper_bounds": [40, 255, 255]
+    },
+    "blue": {
+      "lower_bounds": [90, 25, 100],
+      "upper_bounds": [140, 255, 255]
+    }
+  },
+  "calibration_date_ms": 0
+}

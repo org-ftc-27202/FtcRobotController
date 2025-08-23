@@ -19,7 +19,7 @@
  * SOFTWARE.
  */
 
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.machinevision;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -107,7 +107,7 @@ public class bodhiMachineVision extends LinearOpMode {
     }
 
     public class SampleAlignmentPipeline implements VisionProcessor {
-        class ColorStrandBounds {
+        public class ColorStrandBounds {
             private Scalar lowerBounds;
             private Scalar upperBounds;
 
