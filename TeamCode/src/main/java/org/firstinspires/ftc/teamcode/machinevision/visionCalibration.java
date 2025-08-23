@@ -52,14 +52,23 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.util.Size;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.IOException;
 
 @TeleOp(name = "Vision Calibration", group = "Robot")
 
 public class visionCalibration extends LinearOpMode {
-    HsvBounds redBounds = new HsvBounds(new double[]{160, 15, 179}, new double[]{9, 255, 255});
-    HsvBounds yellowBounds = new HsvBounds(new double[]{20, 80, 170}, new double[]{40, 255, 255});
-    HsvBounds blueBounds = new HsvBounds(new double[]{90, 25, 100}, new double[]{140, 255, 255});
+    //HsvBounds redBounds = new HsvBounds(new double[]{160, 15, 179}, new double[]{9, 255, 255});
+    //HsvBounds yellowBounds = new HsvBounds(new double[]{20, 80, 170}, new double[]{40, 255, 255});
+    //HsvBounds blueBounds = new HsvBounds(new double[]{90, 25, 100}, new double[]{140, 255, 255});
+
+    HsvBounds rBounds = new HsvBounds(new double[]{0, 0, 0}, new double[]{0, 0, 0});
+    HsvBounds yBounds = new HsvBounds(new double[]{0, 0, 0}, new double[]{0, 0, 0});
+    HsvBounds bBounds = new HsvBounds(new double[]{0, 0, 0}, new double[]{0, 0, 0});
+    DateMs calibrationDate = new DateMs(0);
 
     @Override
     public void runOpMode() {
@@ -82,7 +91,10 @@ public class visionCalibration extends LinearOpMode {
         waitForStart();
 
         CalibrationDataAccessPoint calibrationData = new CalibrationDataAccessPoint();
-        calibrationData.writeToInternalStorage("calibration_data.json", redBounds, yellowBounds, blueBounds, System.currentTimeMillis());
+        //calibrationData.writeToInternalStorage("calibration_data.json", redBounds, yellowBounds, blueBounds, new DateMs(System.currentTimeMillis()));
+
+
+        boolean receivedCalibrationFromInternalStorage = calibrationData.readAndParseCalibrationData("calibration_data.json", rBounds, yBounds, bBounds, calibrationDate);
 
         while (opModeIsActive()) {
             // Send some stats to the telemetry
@@ -90,8 +102,26 @@ public class visionCalibration extends LinearOpMode {
             //telemetry.addData("Frame Count", visionPortal.getFrameCount());
             telemetry.addData("FPS", String.format("%.2f", visionPortal.getFps()));
 
-            telemetry.addData("File Path", calibrationData.getInternalDir());
-            telemetry.addData("File Contents", calibrationData.readFromInternalStorage("calibration_data.json"));
+            //telemetry.addData("File Path", calibrationData.getInternalDir());
+            //telemetry.addData("File Contents", calibrationData.readFromJsonInternalStorage("calibration_data.json"));
+
+            telemetry.addData("Received Calibration From Internal Storage", receivedCalibrationFromInternalStorage);
+
+            double[] r_lower = rBounds.getLowerBoundsArray();
+            double[] r_upper = rBounds.getUpperBoundsArray();
+            double[] y_lower = yBounds.getLowerBoundsArray();
+            double[] y_upper = yBounds.getUpperBoundsArray();
+            double[] b_lower = bBounds.getLowerBoundsArray();
+            double[] b_upper = bBounds.getUpperBoundsArray();
+
+            telemetry.addLine("Red Lower Bounds: [" + r_lower[0] + ", " + r_lower[1] + ", " + r_lower[2] + "]");
+            telemetry.addLine("Red Upper Bounds: [" + r_upper[0] + ", " + r_upper[1] + ", " + r_upper[2] + "]");
+            telemetry.addLine("Yellow Lower Bounds: [" + y_lower[0] + ", " + y_lower[1] + ", " + y_lower[2] + "]");
+            telemetry.addLine("Yellow Upper Bounds: [" + y_upper[0] + ", " + y_upper[1] + ", " + y_upper[2] + "]");
+            telemetry.addLine("Blue Lower Bounds: [" + b_lower[0] + ", " + b_lower[1] + ", " + b_lower[2] + "]");
+            telemetry.addLine("Blue Upper Bounds: [" + b_upper[0] + ", " + b_upper[1] + ", " + b_upper[2] + "]");
+
+            telemetry.addData("Minutes Since Calibration", calibrationDate.getMinutesTimeSince());
 
             //telemetry.addData("Total frame time ms", visionPortal.getTotalFrameTimeMs());
             //telemetry.addData("Pipeline time ms", visionPortal.getPipelineTime());
@@ -184,6 +214,11 @@ public class visionCalibration extends LinearOpMode {
             upperBounds = new Scalar(newUpperBounds[0], newUpperBounds[1], newUpperBounds[2]);
         }
 
+        public void setBounds(double[] newLowerBounds, double[] newUpperBounds) {
+            setLowerBounds(newLowerBounds);
+            setUpperBounds(newUpperBounds);
+        }
+
         public void hsvMatInRange(Mat src, Mat output) {
             double lowerBoundsH = lowerBounds.val[0];
             double upperBoundsH = upperBounds.val[0];
@@ -218,6 +253,27 @@ public class visionCalibration extends LinearOpMode {
         }
     }
 
+    public static class DateMs {
+        private long date_ms;
+
+        private DateMs(long init_ms) {
+            date_ms = init_ms;
+        }
+
+        public long getDateMs() {
+            return date_ms;
+        }
+
+        public void setDateMs(long new_ms) {
+            date_ms = new_ms;
+        }
+
+        public double getMinutesTimeSince() {
+            long differenceMillis = System.currentTimeMillis() - date_ms;
+            return (double) differenceMillis / 1000 / 60;
+        }
+    }
+
     public class CalibrationDataAccessPoint {
         private final Context appContext;
 
@@ -231,7 +287,7 @@ public class visionCalibration extends LinearOpMode {
             return internalFilesDir.getAbsolutePath();
         }
 
-        private String getCalibrationJson(HsvBounds rBounds, HsvBounds yBounds, HsvBounds bBounds, long date_ms) {
+        private String getCalibrationJson(HsvBounds rBounds, HsvBounds yBounds, HsvBounds bBounds, DateMs date_ms) {
             double[] r_lower = rBounds.getLowerBoundsArray();
             double[] r_upper = rBounds.getUpperBoundsArray();
             double[] y_lower = yBounds.getLowerBoundsArray();
@@ -255,11 +311,11 @@ public class visionCalibration extends LinearOpMode {
                 "           \"upper_bounds\": [" + b_upper[0] + ", " + b_upper[1] + ", " + b_upper[2] + "]\n" +
                 "       }\n" +
                 "   },\n" +
-                "   \"calibration_date_ms\": " + date_ms + "\n" +
+                "   \"calibration_date_ms\": " + date_ms.getDateMs() + "\n" +
                 "}";
         }
 
-        public void writeToInternalStorage(String filename, HsvBounds rBounds, HsvBounds yBounds, HsvBounds bBounds, long date_ms) {
+        public void writeToInternalStorage(String filename, HsvBounds rBounds, HsvBounds yBounds, HsvBounds bBounds, DateMs date_ms) {
             String jsonStringContent = getCalibrationJson(rBounds, yBounds, bBounds, date_ms);
             FileOutputStream fos = null;
 
@@ -285,7 +341,7 @@ public class visionCalibration extends LinearOpMode {
             }
         }
 
-        public String readFromInternalStorage(String filename) {
+        public String readFromJsonInternalStorage(String filename) {
             StringBuilder stringBuilder = new StringBuilder();
             FileInputStream fis = null;
             String fileContent;
@@ -319,6 +375,88 @@ public class visionCalibration extends LinearOpMode {
             }
             return fileContent;
             //todo: convert json to values and add backup values in case of failure
+        }
+
+        public double[] jsonArrayToDoubleArray(JSONArray array) {
+            double[] doubleArray = new double[array.length()];
+            try {
+                for (int i = 0; i < array.length(); i++) {
+                    doubleArray[i] = array.getDouble(i);
+                }
+                return doubleArray;
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            // Returning an empty array doesn't matter because it will catch error in other function anyways
+            return doubleArray;
+        }
+
+        public boolean readAndParseCalibrationData(String filename, HsvBounds rBounds, HsvBounds yBounds, HsvBounds bBounds, DateMs date_ms) {
+            try {
+                String jsonStringContent = readFromJsonInternalStorage(filename);
+                if (!jsonStringContent.isEmpty()) {
+                    try {
+                        JSONObject jsonObject = new JSONObject(jsonStringContent);
+
+                        JSONObject calibrationValues = jsonObject.getJSONObject("calibration_values");
+                        JSONObject red_bounds = calibrationValues.getJSONObject("red");
+                        JSONObject yellow_bounds = calibrationValues.getJSONObject("yellow");
+                        JSONObject blue_bounds = calibrationValues.getJSONObject("blue");
+
+                        rBounds.setBounds(
+                                jsonArrayToDoubleArray(red_bounds.getJSONArray("lower_bounds")),
+                                jsonArrayToDoubleArray(red_bounds.getJSONArray("upper_bounds"))
+                        );
+                        yBounds.setBounds(
+                                jsonArrayToDoubleArray(yellow_bounds.getJSONArray("lower_bounds")),
+                                jsonArrayToDoubleArray(yellow_bounds.getJSONArray("upper_bounds"))
+                        );
+                        bBounds.setBounds(
+                                jsonArrayToDoubleArray(blue_bounds.getJSONArray("lower_bounds")),
+                                jsonArrayToDoubleArray(blue_bounds.getJSONArray("upper_bounds"))
+                        );
+
+                        date_ms.setDateMs(jsonObject.getLong("calibration_date_ms"));
+                        return true;
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // SOMETHING WENT WRONG, USE DEFAULT VALUES
+            /*
+            rBounds.setBounds(
+                    new double[]{160, 15, 179},
+                    new double[]{9, 255, 255}
+            );
+            yBounds.setBounds(
+                    new double[]{20, 80, 170},
+                    new double[]{40, 255, 255}
+            );
+            bBounds.setBounds(
+                    new double[]{90, 25, 100},
+                    new double[]{140, 255, 255}
+            );
+            date_ms.setDateMs(System.currentTimeMillis());
+            // todo: change the date_ms to an accurate date
+            */
+            //USING 0 FOR DEBUGGING
+            rBounds.setBounds(
+                    new double[]{1, 1, 1},
+                    new double[]{1, 1, 1}
+            );
+            yBounds.setBounds(
+                    new double[]{1, 1, 1},
+                    new double[]{1, 1, 1}
+            );
+            bBounds.setBounds(
+                    new double[]{1, 1, 1},
+                    new double[]{1, 1, 1}
+            );
+            return false;
         }
     }
 
@@ -424,9 +562,9 @@ public class visionCalibration extends LinearOpMode {
             Mat blueMask = new Mat();
 
             // Apply masks to frame
-            redBounds.hsvMatInRange(hsv, redMask);
-            yellowBounds.hsvMatInRange(hsv, yellowMask);
-            blueBounds.hsvMatInRange(hsv, blueMask);
+            rBounds.hsvMatInRange(hsv, redMask);
+            yBounds.hsvMatInRange(hsv, yellowMask);
+            bBounds.hsvMatInRange(hsv, blueMask);
 
             // Combine masks
             Core.merge(Arrays.asList(redMask, yellowMask, blueMask), processedFrame);
