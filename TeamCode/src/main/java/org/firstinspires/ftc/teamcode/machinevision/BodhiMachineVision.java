@@ -45,7 +45,7 @@ import android.util.Size;
 
 @TeleOp(name = "Bodhi Machine Vision", group = "Robot")
 
-public class bodhiMachineVision extends LinearOpMode {
+public class BodhiMachineVision extends LinearOpMode {
     @Override
     public void runOpMode() {
         WebcamName webcamName = hardwareMap.get(WebcamName.class, "Webcam 1");
